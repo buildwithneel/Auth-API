@@ -1,3 +1,4 @@
+
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface IUser extends Document {
@@ -8,6 +9,8 @@ export interface IUser extends Document {
   isEmailVerified: boolean;
   emailVerificationToken?: string;
   emailVerificationExpires?: Date;
+  passwordResetToken?: string;
+  passwordResetExpires?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -47,6 +50,14 @@ const userSchema = new Schema<IUser>(
       select: false
     },
     emailVerificationExpires: {
+      type: Date,
+      select: false
+    },
+    passwordResetToken: {
+      type: String,
+      select: false
+    },
+    passwordResetExpires: {
       type: Date,
       select: false
     }
