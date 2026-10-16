@@ -3,13 +3,13 @@
   "version": "1.0.0",
   "description": "Authentication REST API development environment",
   "main": "dist/index.js",
-  "type": "commonjs",
-  "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "typecheck": "tsc --noEmit",
-    "build": "tsc",
-    "test": "vitest run"
-  },
+  "type": "commonjs","scripts": {
+  "dev": "tsx watch src/server.ts",
+  "start": "node dist/server.js",
+  "typecheck": "tsc --noEmit",
+  "build": "tsc",
+  "test": "vitest run"
+},
   "keywords": [],
   "author": "",
   "license": "ISC",
