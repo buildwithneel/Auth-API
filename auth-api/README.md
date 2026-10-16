@@ -1,0 +1,470 @@
+# 🛡️ Production-Grade Authentication & Authorization REST API
+
+A secure, modular, and type-safe Authentication & Role-Based Access Control (RBAC) REST API built with **Node.js**, **Express**, **TypeScript**, **MongoDB (Mongoose)**, and **Zod**.
+
+---
+
+## 📑 Table of Contents
+
+- [Features](#-features)
+- [Tech Stack](#-tech-stack)
+- [Project Architecture](#-project-architecture)
+- [Prerequisites](#-prerequisites)
+- [Getting Started](#-getting-started)
+- [Environment Variables](#-environment-variables)
+- [Available Scripts](#-available-scripts)
+- [API Reference](#-api-reference)
+  - [Public & Health Check Endpoints](#1-public--health-checks)
+  - [Authentication Endpoints](#2-authentication--session-management)
+  - [Password Management](#3-password-management)
+  - [Protected & Role-Restricted Endpoints](#4-protected--role-restricted-routes)
+- [Testing](#-testing)
+- [Security Features](#-security-features)
+- [License](#-license)
+
+---
+
+## ✨ Features
+
+- 🔐 **Dual-Token Authentication**:
+  - Short-lived JWT Access Tokens (`15m` default) for request authorization.
+  - Long-lived JWT Refresh Tokens (`7d` default) for seamless session renewals.
+- 🔄 **Refresh Token Rotation & Revocation**:
+  - Refresh tokens are hashed using SHA-256 before storage in MongoDB.
+  - Automatic token expiration utilizing MongoDB TTL indexes.
+  - Revocation support on explicit logout.
+- 👥 **Role-Based Access Control (RBAC)**:
+  - Role enforcement via route middleware (`user`, `admin`).
+- 📧 **Email Verification Workflow**:
+  - Secure, single-use hashed verification tokens with expiration.
+  - Automated HTML/plain text emails sent via Nodemailer.
+  - Resend verification endpoint with duplicate-request prevention.
+- 🔑 **Password Reset Pipeline**:
+  - Secure forgot-password flow with time-limited crypto tokens.
+  - Password hashing with `bcryptjs` and salt rounds.
+- 🛡️ **Defense-In-Depth Security**:
+  - HTTP header protection with **Helmet**.
+  - Cross-Origin Resource Sharing (**CORS**) filtering.
+  - Rate limiting on sensitive authentication routes via **express-rate-limit**.
+  - Strict input validation and sanitization powered by **Zod**.
+  - Sensitive database fields protected with `select: false` (passwords, tokens).
+- 🧪 **Type Safety & Automated Testing**:
+  - Full TypeScript strict mode.
+  - Unit and integration tests with **Vitest** and **Supertest**.
+
+---
+
+## 🛠 Tech Stack
+
+| Category | Technologies |
+| :--- | :--- |
+| **Runtime & Language** | [Node.js](https://nodejs.org/) (v18+), [TypeScript](https://www.typescriptlang.org/) (v5+ / 7.x) |
+| **Web Framework** | [Express](https://expressjs.com/) (v5.x) |
+| **Database & ODM** | [MongoDB](https://www.mongodb.com/), [Mongoose](https://mongoosejs.com/) (v9.x) |
+| **Validation** | [Zod](https://zod.dev/) (v4.x) |
+| **Security & Auth** | [JSON Web Tokens (JWT)](https://jwt.io/), [bcryptjs](https://github.com/dcodeIO/bcrypt.js), [Helmet](https://helmetjs.github.io/), [express-rate-limit](https://express-rate-limit.mintlify.app/) |
+| **Email Service** | [Nodemailer](https://nodemailer.com/) |
+| **Testing** | [Vitest](https://vitest.dev/), [Supertest](https://github.com/ladjs/supertest) |
+| **Development Tooling**| [tsx](https://github.com/privatenumber/tsx) (watch mode & execution) |
+
+---
+
+## 📂 Project Architecture
+
+```text
+auth-api/
+├── dist/                      # Compiled JavaScript files (tsc output)
+├── src/
+│   ├── __tests__/             # Unit and integration test suites
+│   │   └── app.test.ts
+│   ├── config/                # Database and service configurations
+│   │   └── db.ts              # Mongoose MongoDB connection handler
+│   ├── controllers/           # HTTP controllers (request/response orchestration)
+│   │   └── auth.controller.ts
+│   ├── middleware/            # Express middlewares
+│   │   ├── auth.middleware.ts       # JWT Bearer token verification
+│   │   ├── error.middleware.ts      # Global 404 & error handlers
+│   │   ├── rateLimit.middleware.ts  # Brute-force rate limiting
+│   │   └── role.middleware.ts       # Role-based authorization guard
+│   ├── models/                # Mongoose schemas & data models
+│   │   ├── RefreshToken.ts          # Hashed refresh token schema with TTL
+│   │   └── User.ts                  # User schema with credentials & roles
+│   ├── routes/                # Express route definitions
+│   │   └── auth.routes.ts           # Authentication endpoint routes
+│   ├── services/              # External service integrations
+│   │   └── email.service.ts         # Nodemailer transporter & mail dispatch
+│   ├── utils/                 # Utility helpers
+│   │   ├── emailVerification.ts     # Verification token generator & hash
+│   │   ├── password.ts              # Bcrypt hash and comparison
+│   │   ├── passwordReset.ts         # Password reset token utilities
+│   │   ├── refreshToken.ts          # SHA-256 token hashing & expiry calculation
+│   │   └── token.ts                 # JWT access & refresh signers
+│   ├── validators/            # Zod input schemas
+│   │   └── auth.validator.ts        # Request payload schemas
+│   ├── app.ts                 # Express application configuration & middlewares
+│   └── server.ts              # Server bootstrap and database listener
+├── .editorconfig              # Editor style settings
+├── .env.example               # Template environment configuration
+├── package.json               # NPM scripts and dependencies
+├── tsconfig.json              # TypeScript compiler settings
+└── README.md                  # Project documentation
+```
+
+---
+
+## 📋 Prerequisites
+
+Before running the application, make sure you have:
+
+1. **Node.js** (v18.0.0 or higher) - [Download Node.js](https://nodejs.org/)
+2. **npm** (v9.0.0 or higher)
+3. **MongoDB** - Either:
+   - A local MongoDB instance running on `mongodb://localhost:27017`
+   - A free [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) cloud cluster
+4. *(Optional)* **SMTP Credentials** (e.g., Gmail App Password) for sending email verification and password reset emails.
+
+---
+
+## 🚀 Getting Started
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/buildwithneel/Auth-API.git
+cd "Auth API/auth-api"
+```
+
+### 2. Install Dependencies
+
+```bash
+npm install
+```
+
+### 3. Configure Environment Variables
+
+Copy the `.env.example` file to create your local `.env`:
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and fill in your values (see [Environment Variables](#-environment-variables) below).
+
+> 💡 **Tip:** Generate secure 32+ character secrets using Node.js:
+> ```bash
+> node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+> ```
+
+### 4. Run the Development Server
+
+Start the application with hot-reloading using `tsx`:
+
+```bash
+npm run dev
+```
+
+The server will start on `http://localhost:5000` (or your configured `PORT`).
+
+---
+
+## ⚙️ Environment Variables
+
+| Variable | Description | Example / Default | Required |
+| :--- | :--- | :--- | :---: |
+| `PORT` | Port for the Express server to listen on | `5000` | No |
+| `NODE_ENV` | Runtime environment (`development`, `production`, `test`) | `development` | No |
+| `MONGODB_URI` | MongoDB connection URI | `mongodb://localhost:27017/auth_api` | **Yes** |
+| `JWT_ACCESS_SECRET` | Secret key used to sign Access Tokens | *Random 64-hex string* | **Yes** |
+| `ACCESS_TOKEN_EXPIRES_IN` | Access token lifespan (e.g. `15m`, `1h`) | `15m` | No |
+| `JWT_REFRESH_SECRET` | Secret key used to sign Refresh Tokens | *Random 64-hex string* | **Yes** |
+| `REFRESH_TOKEN_EXPIRES_IN` | Refresh token lifespan (e.g. `7d`, `30d`) | `7d` | No |
+| `SMTP_HOST` | SMTP server host | `smtp.gmail.com` | If mailing |
+| `SMTP_PORT` | SMTP port | `587` | No |
+| `SMTP_USER` | Email address / username for SMTP auth | `user@gmail.com` | If mailing |
+| `SMTP_PASS` | Password or 16-character App Password | `xxxx xxxx xxxx xxxx` | If mailing |
+| `EMAIL_FROM` | Sender display name and email address | `"Auth API" <no-reply@app.com>`| No |
+| `CLIENT_URL` | Frontend origin allowed by CORS | `http://localhost:3000` | No |
+| `EMAIL_VERIFICATION_URL` | Base URL included in verification links | `http://localhost:5000/api/auth/verify-email` | No |
+| `PASSWORD_RESET_URL` | Base URL included in password reset emails | `http://localhost:5000/api/auth/reset-password` | No |
+
+---
+
+## 📜 Available Scripts
+
+Run these commands inside the `auth-api` directory:
+
+| Command | Action |
+| :--- | :--- |
+| `npm run dev` | Runs the server in development mode with auto-reload (`tsx watch src/server.ts`) |
+| `npm run build` | Compiles TypeScript into JavaScript (`dist/`) |
+| `npm start` | Runs the compiled production code (`node dist/server.js`) |
+| `npm run typecheck` | Checks TypeScript types without emitting output (`tsc --noEmit`) |
+| `npm test` | Runs the automated test suite using **Vitest** |
+
+---
+
+## 📡 API Reference
+
+Base URL: `http://localhost:5000`
+
+### 1. Public & Health Checks
+
+#### `GET /`
+Returns the API root status.
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Authentication API is running"
+  }
+  ```
+
+#### `GET /health`
+Liveness/readiness probe.
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "status": "healthy"
+  }
+  ```
+
+---
+
+### 2. Authentication & Session Management
+
+#### `POST /api/auth/register`
+Creates a new user account, triggers an email verification message, and assigns the default `user` role.
+- **Rate Limited**: Yes
+- **Request Body**:
+  ```json
+  {
+    "name": "Jane Doe",
+    "email": "jane@example.com",
+    "password": "SecurePassword123"
+  }
+  ```
+- **Validation**:
+  - `name`: String, 2–50 characters.
+  - `email`: Valid email format (lowercased).
+  - `password`: String, 8–72 characters.
+- **Response `201 Created`**:
+  ```json
+  {
+    "success": true,
+    "message": "Registration successful. Please verify your email.",
+    "user": {
+      "id": "65b...",
+      "name": "Jane Doe",
+      "email": "jane@example.com",
+      "role": "user"
+    }
+  }
+  ```
+
+#### `GET /api/auth/verify-email?token=<token>`
+Verifies user email via single-use token received by email.
+- **Rate Limited**: Yes
+- **Query Parameters**:
+  - `token`: Hex verification token.
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Email verified successfully"
+  }
+  ```
+
+#### `POST /api/auth/resend-verification`
+Resends the verification email if the user is unverified.
+- **Rate Limited**: Yes
+- **Request Body**:
+  ```json
+  {
+    "email": "jane@example.com"
+  }
+  ```
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Verification email resent successfully"
+  }
+  ```
+
+#### `POST /api/auth/login`
+Authenticates user credentials and returns both Access and Refresh tokens.
+- **Rate Limited**: Yes
+- **Request Body**:
+  ```json
+  {
+    "email": "jane@example.com",
+    "password": "SecurePassword123"
+  }
+  ```
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Login successful",
+    "user": {
+      "id": "65b...",
+      "name": "Jane Doe",
+      "email": "jane@example.com",
+      "role": "user"
+    },
+    "accessToken": "eyJhbGciOi...",
+    "refreshToken": "eyJhbGciOi..."
+  }
+  ```
+
+#### `POST /api/auth/refresh-token`
+Issues a new Access Token using a valid, unexpired, and non-revoked Refresh Token.
+- **Rate Limited**: Yes
+- **Request Body**:
+  ```json
+  {
+    "refreshToken": "eyJhbGciOi..."
+  }
+  ```
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "accessToken": "eyJhbGciOi..."
+  }
+  ```
+
+#### `POST /api/auth/logout`
+Revokes the refresh token from the database and terminates the session.
+- **Headers**: `Authorization: Bearer <accessToken>`
+- **Rate Limited**: Yes
+- **Request Body**:
+  ```json
+  {
+    "refreshToken": "eyJhbGciOi..."
+  }
+  ```
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Logged out successfully"
+  }
+  ```
+
+---
+
+### 3. Password Management
+
+#### `POST /api/auth/forgot-password`
+Initiates password recovery by emailing a time-sensitive reset token.
+- **Rate Limited**: Yes
+- **Request Body**:
+  ```json
+  {
+    "email": "jane@example.com"
+  }
+  ```
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "If that email exists, a password reset link has been sent"
+  }
+  ```
+
+#### `POST /api/auth/reset-password`
+Resets the user's password using the token received in email.
+- **Rate Limited**: Yes
+- **Request Body**:
+  ```json
+  {
+    "token": "4a7f...",
+    "password": "NewSecurePassword456"
+  }
+  ```
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Password reset successful. Please log in with your new password."
+  }
+  ```
+
+---
+
+### 4. Protected & Role-Restricted Routes
+
+#### `GET /api/auth/profile`
+Retrieves the authenticated user's profile information.
+- **Headers**: `Authorization: Bearer <accessToken>`
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "user": {
+      "id": "65b...",
+      "name": "Jane Doe",
+      "email": "jane@example.com",
+      "role": "user",
+      "isEmailVerified": true,
+      "createdAt": "2026-10-16T12:00:00.000Z",
+      "updatedAt": "2026-10-16T12:00:00.000Z"
+    }
+  }
+  ```
+
+#### `GET /api/auth/admin`
+Example administrator route protected by `authenticate` and `authorizeRoles("admin")`.
+- **Headers**: `Authorization: Bearer <adminAccessToken>`
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Welcome, admin!"
+  }
+  ```
+- **Response `403 Forbidden`** *(if user role is not admin)*:
+  ```json
+  {
+    "success": false,
+    "message": "Forbidden: insufficient permissions"
+  }
+  ```
+
+---
+
+## 🧪 Testing
+
+The test suite uses [Vitest](https://vitest.dev/) and [Supertest](https://github.com/ladjs/supertest) to perform end-to-end integration tests without mutating production databases:
+
+```bash
+npm test
+```
+
+### Coverage Highlights:
+- ✅ Health checks (`/` and `/health`)
+- ✅ 404 handler for non-existent routes
+- ✅ Protected profile endpoint authentication requirement (`401` on missing token)
+- ✅ Token validation rejecting malformed headers (`401`)
+- ✅ Admin endpoint RBAC authorization enforcement (`403` on standard user)
+- ✅ Public endpoint reachability without bearer token
+
+---
+
+## 🔒 Security Features
+
+1. **Password Hashing**: Uses `bcryptjs` with auto-generated salts. Plaintext passwords are never saved or returned.
+2. **Hashed Tokens**: Email verification tokens, password reset tokens, and refresh tokens are all hashed (SHA-256) before storing in MongoDB.
+3. **Mongoose `select: false`**: Sensitive fields like passwords and tokens are excluded from database queries unless explicitly requested via `.select('+password')`.
+4. **Brute Force & DoS Protection**: `express-rate-limit` throttles requests to sensitive auth routes.
+5. **Security Headers**: Standard headers applied via `helmet`.
+6. **CORS Restrictions**: Configurable via `CLIENT_URL` to restrict requests to trusted client frontends.
+7. **Strict Validation**: All incoming requests are validated against strict Zod schemas with custom error messages.
+
+---
+
+## 📄 License
+
+This project is licensed under the [ISC License](LICENSE).
