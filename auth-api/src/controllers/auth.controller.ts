@@ -5,7 +5,18 @@ import RefreshToken from "../models/RefreshToken";
 import { hashPassword, comparePassword } from "../utils/password";
 import { generateAccessToken, generateRefreshToken } from "../utils/token";
 import { hashRefreshToken, getRefreshTokenExpiry } from "../utils/refreshToken";
-import { registerSchema, loginSchema, refreshTokenSchema, logoutSchema } from "../validators/auth.validator";
+import {
+  generateEmailVerificationToken,
+  hashEmailVerificationToken,
+  getEmailVerificationExpiry
+} from "../utils/emailVerification";
+import { sendEmail } from "../services/email.service";
+import {
+  registerSchema,
+  loginSchema,
+  refreshTokenSchema,
+  logoutSchema
+} from "../validators/auth.validator";
 import { AuthRequest } from "../middleware/auth.middleware";
 
 export const register = async (req: Request, res: Response): Promise<void> => {
@@ -33,39 +44,53 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     }
 
     const hashedPassword = await hashPassword(password);
+    const verificationToken = generateEmailVerificationToken();
+    const verificationTokenHash = hashEmailVerificationToken(verificationToken);
+    const verificationExpiry = getEmailVerificationExpiry();
+
+    const verificationUrl = process.env.EMAIL_VERIFICATION_URL;
+
+    if (!verificationUrl) {
+      res.status(500).json({
+        success: false,
+        message: "Email verification is not configured"
+      });
+      return;
+    }
 
     const user = await User.create({
       name,
       email,
-      password: hashedPassword
+      password: hashedPassword,
+      isEmailVerified: false,
+      emailVerificationToken: verificationTokenHash,
+      emailVerificationExpires: verificationExpiry
     });
 
-    const accessToken = generateAccessToken(user.id, user.role);
-    const refreshToken = generateRefreshToken(user.id);
+    const verificationLink = `${verificationUrl}?token=${verificationToken}`;
 
-    await RefreshToken.create({
-      userId: user._id,
-      tokenHash: hashRefreshToken(refreshToken),
-      expiresAt: getRefreshTokenExpiry()
-    });
+    try {
+      await sendEmail(
+        email,
+        "Verify your email address",
+        `Hello ${name},\n\nPlease verify your email address by opening this link:\n${verificationLink}\n\nThis link expires in 15 minutes.\n\nIf you did not create this account, you can ignore this email.`,
+        `<p>Hello ${name},</p><p>Please verify your email address by clicking the link below:</p><p><a href="${verificationLink}">Verify Email</a></p><p>This link expires in 15 minutes.</p><p>If you did not create this account, you can ignore this email.</p>`
+      );
+    } catch (emailError) {
+      await User.findByIdAndDelete(user._id);
+      throw emailError;
+    }
 
     res.status(201).json({
       success: true,
-      message: "Registration successful",
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      },
-      accessToken,
-      refreshToken
+      message: "Registration successful. Check your email to verify your account."
     });
   } catch (error) {
     console.error("Registration error:", error);
+
     res.status(500).json({
       success: false,
-      message: "Internal server error"
+      message: "Registration failed. Please try again later."
     });
   }
 };
@@ -94,6 +119,14 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    if (!user.isEmailVerified) {
+      res.status(403).json({
+        success: false,
+        message: "Please verify your email before logging in"
+      });
+      return;
+    }
+
     const accessToken = generateAccessToken(user.id, user.role);
     const refreshToken = generateRefreshToken(user.id);
 
@@ -117,6 +150,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error) {
     console.error("Login error:", error);
+
     res.status(500).json({
       success: false,
       message: "Internal server error"
@@ -146,11 +180,13 @@ export const getProfile = async (
         name: user.name,
         email: user.email,
         role: user.role,
+        isEmailVerified: user.isEmailVerified,
         createdAt: user.createdAt
       }
     });
   } catch (error) {
     console.error("Profile error:", error);
+
     res.status(500).json({
       success: false,
       message: "Internal server error"
@@ -221,6 +257,14 @@ export const refreshAccessToken = async (
       return;
     }
 
+    if (!user.isEmailVerified) {
+      res.status(403).json({
+        success: false,
+        message: "Please verify your email before refreshing tokens"
+      });
+      return;
+    }
+
     const accessToken = generateAccessToken(user.id, user.role);
 
     res.status(200).json({
@@ -278,6 +322,57 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error) {
     console.error("Logout error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Internal server error"
+    });
+  }
+};
+
+export const verifyEmail = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const token = req.query.token;
+
+  if (typeof token !== "string" || !token) {
+    res.status(400).json({
+      success: false,
+      message: "Verification token is required"
+    });
+    return;
+  }
+
+  try {
+    const tokenHash = hashEmailVerificationToken(token);
+
+    const user = await User.findOne({
+      emailVerificationToken: tokenHash,
+      emailVerificationExpires: { $gt: new Date() },
+      isEmailVerified: false
+    }).select("+emailVerificationToken +emailVerificationExpires");
+
+    if (!user) {
+      res.status(400).json({
+        success: false,
+        message: "Verification link is invalid, expired, or already used"
+      });
+      return;
+    }
+
+    user.isEmailVerified = true;
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Email verified successfully. You can now log in."
+    });
+  } catch (error) {
+    console.error("Email verification error:", error);
 
     res.status(500).json({
       success: false,
