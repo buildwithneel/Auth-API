@@ -1,8 +1,10 @@
 import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import User from "../models/User";
+import RefreshToken from "../models/RefreshToken";
 import { hashPassword, comparePassword } from "../utils/password";
 import { generateAccessToken, generateRefreshToken } from "../utils/token";
+import { hashRefreshToken, getRefreshTokenExpiry } from "../utils/refreshToken";
 import { registerSchema, loginSchema, refreshTokenSchema } from "../validators/auth.validator";
 import { AuthRequest } from "../middleware/auth.middleware";
 
@@ -40,6 +42,12 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     const accessToken = generateAccessToken(user.id, user.role);
     const refreshToken = generateRefreshToken(user.id);
+
+    await RefreshToken.create({
+      userId: user._id,
+      tokenHash: hashRefreshToken(refreshToken),
+      expiresAt: getRefreshTokenExpiry()
+    });
 
     res.status(201).json({
       success: true,
@@ -88,6 +96,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     const accessToken = generateAccessToken(user.id, user.role);
     const refreshToken = generateRefreshToken(user.id);
+
+    await RefreshToken.create({
+      userId: user._id,
+      tokenHash: hashRefreshToken(refreshToken),
+      expiresAt: getRefreshTokenExpiry()
+    });
 
     res.status(200).json({
       success: true,
@@ -176,6 +190,23 @@ export const refreshAccessToken = async (
       res.status(401).json({
         success: false,
         message: "Invalid refresh token"
+      });
+      return;
+    }
+
+    const tokenHash = hashRefreshToken(result.data.refreshToken);
+
+    const storedToken = await RefreshToken.findOne({
+      userId: decoded.userId,
+      tokenHash,
+      revoked: false,
+      expiresAt: { $gt: new Date() }
+    });
+
+    if (!storedToken) {
+      res.status(401).json({
+        success: false,
+        message: "Refresh token is invalid, expired, or revoked"
       });
       return;
     }
