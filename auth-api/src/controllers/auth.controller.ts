@@ -5,7 +5,7 @@ import RefreshToken from "../models/RefreshToken";
 import { hashPassword, comparePassword } from "../utils/password";
 import { generateAccessToken, generateRefreshToken } from "../utils/token";
 import { hashRefreshToken, getRefreshTokenExpiry } from "../utils/refreshToken";
-import { registerSchema, loginSchema, refreshTokenSchema } from "../validators/auth.validator";
+import { registerSchema, loginSchema, refreshTokenSchema, logoutSchema } from "../validators/auth.validator";
 import { AuthRequest } from "../middleware/auth.middleware";
 
 export const register = async (req: Request, res: Response): Promise<void> => {
@@ -231,6 +231,57 @@ export const refreshAccessToken = async (
     res.status(401).json({
       success: false,
       message: "Invalid or expired refresh token"
+    });
+  }
+};
+
+export const logout = async (req: Request, res: Response): Promise<void> => {
+  const result = logoutSchema.safeParse(req.body);
+
+  if (!result.success) {
+    res.status(400).json({
+      success: false,
+      message: "Invalid input",
+      errors: result.error.issues
+    });
+    return;
+  }
+
+  try {
+    const tokenHash = hashRefreshToken(result.data.refreshToken);
+
+    const token = await RefreshToken.findOneAndUpdate(
+      {
+        tokenHash,
+        revoked: false,
+        expiresAt: { $gt: new Date() }
+      },
+      {
+        $set: { revoked: true }
+      },
+      {
+        new: true
+      }
+    );
+
+    if (!token) {
+      res.status(401).json({
+        success: false,
+        message: "Refresh token is invalid, expired, or already revoked"
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Logout successful"
+    });
+  } catch (error) {
+    console.error("Logout error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Internal server error"
     });
   }
 };
